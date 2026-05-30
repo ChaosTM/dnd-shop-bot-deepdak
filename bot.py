@@ -70,7 +70,7 @@ def is_admin():
 @bot.event
 async def on_ready():
     try:
-        synced = await bot.tree.sync()
+        synced = await bot.tree.sync(guild=discord.Object(id=1460585900504387657)))
         print(f"🌿 Synced {len(synced)} command(s)")
     except Exception as e:
         print(f"❌ Sync error: {e}")
