@@ -305,3 +305,15 @@ if not TOKEN:
     print("❌ ไม่พบ DISCORD_TOKEN!")
 else:
     bot.run(TOKEN)
+@bot.event
+async def on_command_error(ctx, error):
+    # ตรวจสอบว่าเป็นกรณีหาคำสั่งพิมพ์ (Prefix) ไม่เจอใช่หรือไม่
+    if isinstance(error, commands.CommandNotFound):
+        # ทางเลือกที่ 1: ปล่อยผ่านเงียบๆ ไม่แสดง error ในล๊อก Railway อีกต่อไป
+        return 
+        
+        # ทางเลือกที่ 2: (ลบเครื่องหมาย # ด้านล่างออกหากต้องการใช้) ให้บอทแจ้งเตือนคนพิมพ์ผิดในช่องแชท
+        # await ctx.send(f"❌ ไม่พบคำสั่งนี้! บอทร้านค้ารองรับเฉพาะ Slash Command กรุณาพิมพ์เป็น **/{ctx.invoked_with}** แทนนะครับ")
+    
+    # หากเป็น Error รูปแบบอื่น ให้พ่นแจ้งเตือนตามปกติ
+    raise error
