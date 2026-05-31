@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional
-import json, os, random
+import json, os, random, asyncio
 from pathlib import Path
 
 # ─── Config ───────────────────────────────────────────────────────────
@@ -290,12 +290,27 @@ def load_players():
 def save_players(d):
     with open(PLAYERS_FILE,"w",encoding="utf-8") as f: json.dump(d,f,ensure_ascii=False,indent=2)
 def get_player(uid):
+    """Read-only snapshot ใช้สำหรับแสดงผลเท่านั้น"""
     players=load_players(); key=str(uid)
     if key not in players:
-        players[key]={"gold":100,"inventory":{}}; save_players(players)
+        return {"gold":100,"inventory":{}}
     return players[key]
-def save_player(uid,data):
-    players=load_players(); players[str(uid)]=data; save_players(players)
+
+_player_lock = asyncio.Lock()
+
+async def update_player(uid: int, fn):
+    """Atomic read-modify-write ป้องกัน race condition
+    fn(player) แก้ไข dict ใน place, คืนค่า player หลังแก้ไข"""
+    async with _player_lock:
+        players = load_players()
+        key = str(uid)
+        if key not in players:
+            players[key] = {"gold": 100, "inventory": {}}
+        player = players[key]
+        fn(player)
+        players[key] = player
+        save_players(players)
+        return player
 
 def load_setup():
     if not SETUP_FILE.exists():
@@ -528,9 +543,16 @@ async def buy(i:discord.Interaction,item_id:str,quantity:int=1):
     sd=load_shop(); item=sd["items"].get(item_id)
     if not item: await i.response.send_message(f"❌ ไม่พบ `{item_id}`\nใช้ `/market` เพื่อดู ID",ephemeral=True); return
     if item["stock"]!=-1 and item["stock"]<quantity: await i.response.send_message(f"❌ stock ไม่พอ! เหลือ **{item['stock']} ชิ้น**",ephemeral=True); return
-    total=item["price"]*quantity; player=get_player(i.user.id)
-    if player["gold"]<total: await i.response.send_message(f"❌ ทองไม่พอ!\nต้องการ **{fmt_price(total)}** | มี **{fmt_price(player['gold'])}**",ephemeral=True); return
-    player["gold"]-=total; player["inventory"][item_id]=player["inventory"].get(item_id,0)+quantity; save_player(i.user.id,player)
+    total = item["price"] * quantity
+    err = None
+    def do_buy(p):
+        nonlocal err
+        if p["gold"] < total:
+            err = f"❌ ทองไม่พอ!\nต้องการ **{fmt_price(total)}** | มี **{fmt_price(p['gold'])}**"; return
+        p["gold"] -= total
+        p["inventory"][item_id] = p["inventory"].get(item_id, 0) + quantity
+    player = await update_player(i.user.id, do_buy)
+    if err: await i.response.send_message(err, ephemeral=True); return
     if item["stock"]!=-1: sd["items"][item_id]["stock"]-=quantity; save_shop(sd)
     embed=discord.Embed(title="✅ ซื้อสำเร็จ!",color=0x2ECC71)
     embed.add_field(name="🛍️ สินค้า", value=f"**{item['name']}** ×{quantity}",inline=True)
@@ -542,13 +564,20 @@ async def buy(i:discord.Interaction,item_id:str,quantity:int=1):
 @app_commands.describe(item_id="ID สินค้า",quantity="จำนวน")
 async def sell(i:discord.Interaction,item_id:str,quantity:int=1):
     if quantity<=0: await i.response.send_message("❌ จำนวนต้องมากกว่า 0",ephemeral=True); return
-    player=get_player(i.user.id); have=player["inventory"].get(item_id,0)
-    if have<quantity: await i.response.send_message(f"❌ มี `{item_id}` แค่ **{have} ชิ้น**",ephemeral=True); return
     item=load_shop()["items"].get(item_id) or MAGIC_ITEMS.get(item_id)
     if not item: await i.response.send_message(f"❌ ไม่พบข้อมูล `{item_id}`",ephemeral=True); return
-    earned=item["price"]*quantity/2; player["inventory"][item_id]-=quantity
-    if player["inventory"][item_id]<=0: del player["inventory"][item_id]
-    player["gold"]+=earned; save_player(i.user.id,player)
+    earned = item["price"] * quantity / 2
+    err = None
+    def do_sell(p):
+        nonlocal err
+        have = p["inventory"].get(item_id, 0)
+        if have < quantity:
+            err = f"❌ มี `{item_id}` แค่ **{have} ชิ้น**"; return
+        p["inventory"][item_id] -= quantity
+        if p["inventory"][item_id] <= 0: del p["inventory"][item_id]
+        p["gold"] += earned
+    player = await update_player(i.user.id, do_sell)
+    if err: await i.response.send_message(err, ephemeral=True); return
     embed=discord.Embed(title="💱 ขายสำเร็จ!",color=0xE67E22)
     embed.add_field(name="🛍️ สินค้า", value=f"**{item['name']}** ×{quantity}",inline=True)
     embed.add_field(name="🪙 ได้รับ",  value=f"**{fmt_price(earned)}**",        inline=True)
@@ -596,19 +625,25 @@ class BuyRollSelect(discord.ui.Select):
                              min_values=1, max_values=1, disabled=True)
 
     async def callback(self, i: discord.Interaction):
-        player = get_player(i.user.id); bought = []; failed = []
-        newly_sold = set()
-        for iid in self.values:
+        to_buy = self.values[:]
+        bought = []; failed = []; newly_sold = set()
+        for iid in to_buy:
             item = MAGIC_ITEMS.get(iid)
             if not item: continue
-            if player["gold"] >= item["price"]:
-                player["gold"] -= item["price"]
-                player["inventory"][iid] = player["inventory"].get(iid, 0) + 1
-                bought.append(item["name"])
-                newly_sold.add(iid)
+            item_price = item["price"]; item_name = item["name"]
+            buy_err = None
+            def do_roll_buy(p, _iid=iid, _price=item_price, _name=item_name):
+                nonlocal buy_err
+                if p["gold"] < _price:
+                    buy_err = f"{_name} (ต้องการ {fmt_price(_price)})"; return
+                p["gold"] -= _price
+                p["inventory"][_iid] = p["inventory"].get(_iid, 0) + 1
+            await update_player(i.user.id, do_roll_buy)
+            if buy_err:
+                failed.append(buy_err)
             else:
-                failed.append(f"{item['name']} (ต้องการ {fmt_price(item['price'])})")
-        save_player(i.user.id, player)
+                bought.append(item_name); newly_sold.add(iid)
+        player = get_player(i.user.id)
 
         # ── อัปเดต view เดิม: mark sold items ──
         if newly_sold and i.message:
@@ -652,11 +687,18 @@ async def roll_reward(i:discord.Interaction,rank:str,quest_name:str=None,count:i
 @app_commands.choices(action=[app_commands.Choice(name="➕ เพิ่ม",value="add"),app_commands.Choice(name="➖ ลด",value="remove"),app_commands.Choice(name="🔧 กำหนด",value="set")])
 @is_admin()
 async def admin_gold(i:discord.Interaction,member:discord.Member,action:str,amount:float):
-    p=get_player(member.id); old=p["gold"]
-    if action=="add":    p["gold"]=max(0,p["gold"]+amount); verb=f"+{fmt_price(amount)}"; c=0x2ECC71
-    elif action=="remove": p["gold"]=max(0,p["gold"]-amount); verb=f"-{fmt_price(amount)}"; c=0xE74C3C
-    else:                p["gold"]=max(0,amount); verb=f"= {fmt_price(amount)}"; c=0x3498DB
-    save_player(member.id,p)
+    old_gold = get_player(member.id)["gold"]
+    old = old_gold
+    if action=="add":   verb=f"+{fmt_price(amount)}"; c=0x2ECC71
+    elif action=="remove": verb=f"-{fmt_price(amount)}"; c=0xE74C3C
+    else:               verb=f"= {fmt_price(amount)}"; c=0x3498DB
+    def do_gold(p):
+        nonlocal old
+        old = p["gold"]
+        if action=="add":    p["gold"] = max(0, p["gold"] + amount)
+        elif action=="remove": p["gold"] = max(0, p["gold"] - amount)
+        else:                p["gold"] = max(0, amount)
+    p = await update_player(member.id, do_gold)
     embed=discord.Embed(title="💰 ปรับทองสำเร็จ",color=c)
     embed.add_field(name="👤 ผู้เล่น",     value=member.mention,inline=True)
     embed.add_field(name="🔧 การเปลี่ยน",  value=verb,          inline=True)
@@ -669,7 +711,8 @@ async def admin_gold(i:discord.Interaction,member:discord.Member,action:str,amou
 async def admin_give_item(i:discord.Interaction,member:discord.Member,item_id:str,quantity:int=1):
     item=load_shop()["items"].get(item_id) or MAGIC_ITEMS.get(item_id)
     if not item: await i.response.send_message(f"❌ ไม่พบ `{item_id}`",ephemeral=True); return
-    p=get_player(member.id); p["inventory"][item_id]=p["inventory"].get(item_id,0)+quantity; save_player(member.id,p)
+    await update_player(member.id, lambda p: p["inventory"].update({item_id: p["inventory"].get(item_id,0)+quantity}))
+    p = get_player(member.id)
     embed=discord.Embed(title="🎁 มอบไอเทมสำเร็จ",color=0x9B59B6)
     embed.add_field(name="👤 ผู้รับ",value=member.mention,inline=True)
     embed.add_field(name="📦 ไอเทม",value=f"**{item['name']}** ×{quantity}",inline=True)
@@ -679,11 +722,13 @@ async def admin_give_item(i:discord.Interaction,member:discord.Member,item_id:st
 @app_commands.describe(member="ผู้เล่น",item_id="ID",quantity="จำนวน")
 @is_admin()
 async def admin_take_item(i:discord.Interaction,member:discord.Member,item_id:str,quantity:int=1):
-    p=get_player(member.id); have=p["inventory"].get(item_id,0)
-    if have<quantity: await i.response.send_message(f"❌ {member.display_name} มี `{item_id}` แค่ {have} ชิ้น",ephemeral=True); return
-    p["inventory"][item_id]-=quantity
-    if p["inventory"][item_id]<=0: del p["inventory"][item_id]
-    save_player(member.id,p)
+    check = get_player(member.id)
+    if check["inventory"].get(item_id,0) < quantity:
+        await i.response.send_message(f"❌ {member.display_name} มี `{item_id}` แค่ {check['inventory'].get(item_id,0)} ชิ้น",ephemeral=True); return
+    def do_take(p):
+        p["inventory"][item_id] = p["inventory"].get(item_id,0) - quantity
+        if p["inventory"][item_id] <= 0: del p["inventory"][item_id]
+    await update_player(member.id, do_take)
     await i.response.send_message(f"🗑️ เอา `{item_id}` ×{quantity} จาก {member.mention} ออกแล้ว")
 
 @bot.tree.command(name="admin_add_item",description="[DM] เพิ่มสินค้าใหม่",guild=discord.Object(id=GUILD_ID))
