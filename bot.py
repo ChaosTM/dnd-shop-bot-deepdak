@@ -183,14 +183,17 @@ def weighted_rarity(rank: str) -> str:
 
 def roll_magic_items(rank: str, count: int = 5) -> list:
     results = []
-    for _ in range(count):
+    attempts = 0
+    while len(results) < count and attempts < count * 20:
+        attempts += 1
         rarity = weighted_rarity(rank)
-        pool = [iid for iid, item in MAGIC_ITEMS.items() if item["rarity"] == rarity]
+        pool = [iid for iid, item in MAGIC_ITEMS.items() if item["rarity"] == rarity and iid not in results]
         if not pool:
-            rarity = "Common"
-            pool = [iid for iid, item in MAGIC_ITEMS.items() if item["rarity"] == rarity]
-        iid = random.choice(pool)
-        results.append(iid)
+            # fallback: ลองรarity อื่นที่ยังมีของ
+            pool = [iid for iid in MAGIC_ITEMS if iid not in results]
+        if not pool:
+            break  # ของหมดจริงๆ
+        results.append(random.choice(pool))
     return results
 
 # ─── Bot ──────────────────────────────────────────────────────────────
@@ -302,8 +305,12 @@ def make_roll_embed(rank: str, item_ids: list, quest_name: str = None):
 class BuyRollSelect(discord.ui.Select):
     def __init__(self, item_ids: list):
         self.item_ids = item_ids
+        seen = set()
         options = []
         for iid in item_ids:
+            if iid in seen:
+                continue  # ข้ามของซ้ำ (safety net)
+            seen.add(iid)
             item = MAGIC_ITEMS.get(iid)
             if item:
                 re = RARITY_EMOJI.get(item["rarity"],"")
