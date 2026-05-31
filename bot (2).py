@@ -562,6 +562,7 @@ async def buy(i:discord.Interaction,item_id:str,quantity:int=1):
 
 @bot.tree.command(name="sell",description="💱 ขายสินค้า (ได้ 50%)",guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(item_id="ID สินค้า",quantity="จำนวน")
+@app_commands.autocomplete(item_id=inventory_autocomplete)
 async def sell(i:discord.Interaction,item_id:str,quantity:int=1):
     if quantity<=0: await i.response.send_message("❌ จำนวนต้องมากกว่า 0",ephemeral=True); return
     item=load_shop()["items"].get(item_id) or MAGIC_ITEMS.get(item_id)
@@ -682,6 +683,92 @@ async def roll_reward(i:discord.Interaction,rank:str,quest_name:str=None,count:i
     await i.response.send_message(embed=make_roll_embed(rank,item_ids,quest_name),view=RollView(item_ids))
 
 # ─── Admin Commands ───────────────────────────────────────────────────
+
+# ─── Autocomplete Helpers ─────────────────────────────────────────────
+async def magic_item_autocomplete(interaction: discord.Interaction, current: str):
+    """Autocomplete สำหรับ Magic Items"""
+    results = []
+    for iid, item in MAGIC_ITEMS.items():
+        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
+            re = RARITY_EMOJI.get(item["rarity"], "")
+            results.append(app_commands.Choice(
+                name=f"{re} {item['name']} [{item['rarity']}]"[:100],
+                value=iid
+            ))
+    return results[:25]
+
+async def all_item_autocomplete(interaction: discord.Interaction, current: str):
+    """Autocomplete สำหรับทุกไอเทม (shop + magic)"""
+    results = []
+    # Magic items first
+    for iid, item in MAGIC_ITEMS.items():
+        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
+            re = RARITY_EMOJI.get(item["rarity"], "✨")
+            results.append(app_commands.Choice(
+                name=f"{re} {item['name']} [{item['rarity']}]"[:100],
+                value=iid
+            ))
+    # Shop items
+    for iid, item in load_shop()["items"].items():
+        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
+            results.append(app_commands.Choice(
+                name=f"🛒 {item['name']}"[:100],
+                value=iid
+            ))
+    return results[:25]
+
+async def inventory_autocomplete(interaction: discord.Interaction, current: str):
+    """Autocomplete จาก inventory ของผู้เล่น"""
+    player = get_player(interaction.user.id)
+    inv = player.get("inventory", {})
+    all_items = {**load_shop()["items"], **{k: {"name": v["name"]} for k, v in MAGIC_ITEMS.items()}}
+    results = []
+    for iid, qty in inv.items():
+        name = all_items.get(iid, {}).get("name", iid)
+        if current.lower() in iid.lower() or current.lower() in name.lower():
+            results.append(app_commands.Choice(
+                name=f"{name} ×{qty}"[:100],
+                value=iid
+            ))
+    return results[:25]
+
+
+@bot.tree.command(name="magic_ids", description="📖 ดู ID ของ Magic Items ทั้งหมด (DM)", guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(rarity="กรองตาม Rarity (ไม่ระบุ = แสดงทั้งหมด)")
+@app_commands.choices(rarity=[
+    app_commands.Choice(name="⚪ Common",     value="Common"),
+    app_commands.Choice(name="🟢 Uncommon",  value="Uncommon"),
+    app_commands.Choice(name="🔵 Rare",      value="Rare"),
+    app_commands.Choice(name="🟣 Very Rare", value="Very Rare"),
+    app_commands.Choice(name="🟡 Legendary", value="Legendary"),
+])
+@is_admin()
+async def magic_ids(i: discord.Interaction, rarity: str = None):
+    filtered = {k: v for k, v in MAGIC_ITEMS.items() if not rarity or v["rarity"] == rarity}
+    embed = discord.Embed(
+        title="📖 Magic Item IDs",
+        description="ใช้ ID เหล่านี้กับ `/admin_give_item` ครับหรือพิมพ์ชื่อใน `/admin_give_item` แล้วเลือกจาก autocomplete ได้เลย",
+        color=0x9B59B6
+    )
+    # Group by rarity
+    groups = {}
+    for iid, item in filtered.items():
+        r = item["rarity"]
+        if r not in groups: groups[r] = []
+        groups[r].append((iid, item["name"]))
+
+    order = ["Common", "Uncommon", "Rare", "Very Rare", "Legendary"]
+    for r in order:
+        if r not in groups: continue
+        lines = [f"`{iid}` — {name}" for iid, name in groups[r]]
+        embed.add_field(
+            name=f"{RARITY_EMOJI.get(r, '')} {r} ({len(lines)})",
+            value="\n".join(lines),
+            inline=False
+        )
+    embed.set_footer(text="💡 Tip: ใน /admin_give_item พิมพ์ชื่อไอเทมแล้วจะมี autocomplete ขึ้นให้เลือกได้เลย")
+    await i.response.send_message(embed=embed, ephemeral=True)
+
 @bot.tree.command(name="admin_gold",description="[DM] ปรับทองผู้เล่น",guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(member="ผู้เล่น",action="add/remove/set",amount="จำนวน GP")
 @app_commands.choices(action=[app_commands.Choice(name="➕ เพิ่ม",value="add"),app_commands.Choice(name="➖ ลด",value="remove"),app_commands.Choice(name="🔧 กำหนด",value="set")])
@@ -708,6 +795,7 @@ async def admin_gold(i:discord.Interaction,member:discord.Member,action:str,amou
 @bot.tree.command(name="admin_give_item",description="[DM] มอบไอเทมให้ผู้เล่น",guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(member="ผู้เล่น",item_id="ID",quantity="จำนวน")
 @is_admin()
+@app_commands.autocomplete(item_id=all_item_autocomplete)
 async def admin_give_item(i:discord.Interaction,member:discord.Member,item_id:str,quantity:int=1):
     item=load_shop()["items"].get(item_id) or MAGIC_ITEMS.get(item_id)
     if not item: await i.response.send_message(f"❌ ไม่พบ `{item_id}`",ephemeral=True); return
@@ -721,6 +809,7 @@ async def admin_give_item(i:discord.Interaction,member:discord.Member,item_id:st
 @bot.tree.command(name="admin_take_item",description="[DM] เอาไอเทมจากผู้เล่น",guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(member="ผู้เล่น",item_id="ID",quantity="จำนวน")
 @is_admin()
+@app_commands.autocomplete(item_id=all_item_autocomplete)
 async def admin_take_item(i:discord.Interaction,member:discord.Member,item_id:str,quantity:int=1):
     check = get_player(member.id)
     if check["inventory"].get(item_id,0) < quantity:
