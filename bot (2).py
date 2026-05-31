@@ -98,7 +98,7 @@ SHOPS = {
     },
     "alchemist": {
         "name": "Potion Store",
-        "npc":  "Seraphine Duskwhisper",
+        "npc":  "Eldrin Vale",
         "desc": "ยาสมุนไพร ยาพิษ และอาวุธเวทย์ทุกชนิด "
                 "ทุกขวดผ่านการกลั่นด้วยความประณีตจากอาจารย์ผู้เชี่ยวชาญ",
         "emoji": "🧪",
