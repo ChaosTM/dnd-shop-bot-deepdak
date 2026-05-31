@@ -231,7 +231,7 @@ DEFAULT_SHOP = {"items": {
     "spyglass":      {"name":"Spyglass",          "desc":"ขยายภาพ 2 เท่า",                                            "price":1000, "category":"gear","stock":-1},
     "tent":          {"name":"Tent",              "desc":"นอนได้ 2 คน Small/Medium",                                   "price":2,    "category":"gear","stock":-1},
     "tinderbox":     {"name":"Tinderbox",         "desc":"Bonus Action: จุดเทียน/โคม | 1 นาที: จุดไฟอื่น",           "price":0.5,  "category":"gear","stock":-1},
-    "torch":         {"name":"Torch",             "desc":"Bright 20ft, Dim +20ft นาน 1 ชม. | ตี = 1 Fire dmg",        "price":0.01, "category":"gear","stock":-1},
+    "torch":         {"name":"Torch",             "desc":"Bright 20ft, Dim +20ft นาน 1 ชม. | ตี = 1 Fire dmg",        "price":0.25, "category":"gear","stock":-1},
     "waterskin":     {"name":"Waterskin",         "desc":"บรรจุ 4 pints | ไม่ดื่มน้ำเสี่ยง Dehydration",             "price":0.2,  "category":"gear","stock":-1},
     # Packs (สะดวกซื้อรวม)
     "dungeoneers_pack":{"name":"Dungeoneer's Pack","desc":"Backpack, Caltrops, Crowbar, Oil×2, Rations×10, Rope, Tinderbox, Torch×10, Waterskin","price":12,"category":"gear","stock":-1},
