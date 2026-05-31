@@ -97,7 +97,7 @@ SHOPS = {
         },
     },
     "alchemist": {
-        "name": "The Mystic Vial",
+        "name": "Potion Store",
         "npc":  "Seraphine Duskwhisper",
         "desc": "ยาสมุนไพร ยาพิษ และอาวุธเวทย์ทุกชนิด "
                 "ทุกขวดผ่านการกลั่นด้วยความประณีตจากอาจารย์ผู้เชี่ยวชาญ",
