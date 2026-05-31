@@ -8,13 +8,9 @@ Discord Bot สำหรับจัดการร้านค้าใน camp
 
 | คำสั่ง | คำอธิบาย | ใครใช้ได้ |
 |--------|---------|-----------|
-| `/shop` | ดูสินค้าทั้งหมด (กรองตาม category ได้) | ทุกคน |
-| `/item <id>` | ดูรายละเอียดสินค้า | ทุกคน |
+| `/market` | ดูสินค้าทั้งหมด (กรองตาม category ได้) | ทุกคน |
 | `/buy <id> <จำนวน>` | ซื้อสินค้า | ทุกคน |
 | `/sell <id> <จำนวน>` | ขายสินค้า (ได้ 50%) | ทุกคน |
-| `/gold` | ดูทองของตัวเอง | ทุกคน |
-| `/inventory` | ดู inventory | ทุกคน |
-| `/profile [@user]` | ดูโปรไฟล์ | ทุกคน |
 | `/admin_gold` | เพิ่ม/ลด/กำหนดทองผู้เล่น | DM/Admin |
 | `/admin_give_item` | มอบไอเทมให้ผู้เล่น | DM/Admin |
 | `/admin_take_item` | เอาไอเทมจากผู้เล่น | DM/Admin |
@@ -94,12 +90,7 @@ dnd_shop_bot/
 
 ## 🎒 สินค้าเริ่มต้น
 
-มีสินค้า default มาให้ 14 รายการ แบ่งเป็น:
-- 🧪 **Potions**: Health Potion, Greater Health Potion, Antitoxin
-- ⚔️ **Weapons**: Shortsword, Longsword, Handaxe
-- 🛡️ **Armor**: Leather Armor, Chain Mail, Shield
-- 🎒 **Adventuring**: Torch, Hemp Rope, Rations
-- ✨ **Magic**: Spellbook, Scroll of Identify
+-จะมาเขียนอีกทีเพราะไม่ว่างจริงๆครับ55
 
 DM สามารถเพิ่ม/ลบ/แก้ไขสินค้าได้ตลอดเวลาผ่าน slash commands
 
