@@ -402,7 +402,7 @@ class ShopCategorySelect(discord.ui.Select):
         self.shop_key=shop_key
         cats=SHOPS[shop_key]["categories"]
         options=[discord.SelectOption(label=label,value=cat_key,emoji=emoji,description=f"ดูสินค้าในหมวด {label}") for cat_key,(emoji,label) in cats.items()]
-        super().__init__(placeholder="เลือกหมวดสินค้า...",options=options)
+        super().__init__(placeholder="เลือกหมวดสินค้า...", options=options, custom_id=f"shop_cat_{shop_key}")
     async def callback(self,i:discord.Interaction):
         embed=make_category_embed(self.shop_key,self.values[0])
         await i.response.send_message(embed=embed,ephemeral=True)
@@ -434,7 +434,7 @@ class MarketShopSelect(discord.ui.Select):
             discord.SelectOption(label="The Mystic Vial",     value="alchemist", emoji="🧪",description="Alchemist — ยาและของเวทย์"),
             discord.SelectOption(label="The Wanderer's Pack", value="general",   emoji="🎒",description="General Store — เสบียงและอุปกรณ์"),
         ]
-        super().__init__(placeholder="เลือกร้านที่ต้องการเยี่ยมชม...",options=options)
+        super().__init__(placeholder="เลือกร้านที่ต้องการเยี่ยมชม...", options=options, custom_id="market_shop_select")
     async def callback(self,i:discord.Interaction):
         shop_key=self.values[0]
         embed=make_shop_embed(shop_key)
