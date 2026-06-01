@@ -863,3 +863,4 @@ async def roll_reward(i:discord.Interaction,rank:str,quest_name:str=None,count:i
     await i.response.send_message(embed=make_roll_embed(rank,item_ids,quest_name),view=RollView(item_ids))
 
 # ─── Admin Commands ───────────────────────────────────────────────────
+
