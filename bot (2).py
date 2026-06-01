@@ -626,10 +626,7 @@ async def admin_remove_item(i:discord.Interaction,item_id:str):
     name=sd["items"][item_id]["name"]; del sd["items"][item_id]; save_shop(sd)
     await i.response.send_message(f"🗑️ ลบ **{name}** ออกจากร้านแล้ว")
 
-# ─── Run ──────────────────────────────────────────────────────────────
-TOKEN=os.getenv("DISCORD_TOKEN")
-if not TOKEN: print("❌ ไม่พบ DISCORD_TOKEN!")
-else: bot.run(TOKEN)
+# (bot.run moved to end of file)
 @bot.tree.command(name="market",description="🏪 เปิดตลาด — เลือกร้านที่ต้องการ",guild=discord.Object(id=GUILD_ID))
 async def market(i:discord.Interaction):
     embed=discord.Embed(title="🏪 The Grand Market",color=0xF1C40F,
@@ -864,3 +861,9 @@ async def roll_reward(i:discord.Interaction,rank:str,quest_name:str=None,count:i
 
 # ─── Admin Commands ───────────────────────────────────────────────────
 
+# ─── Run ──────────────────────────────────────────────────────────────
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    print("❌ ไม่พบ DISCORD_TOKEN!")
+else:
+    bot.run(TOKEN)
