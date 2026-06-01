@@ -450,6 +450,186 @@ class MarketView(discord.ui.View):
     @discord.ui.button(label="List of Items",style=discord.ButtonStyle.primary,emoji="📋",custom_id="market:inventory")
     async def inv(self,i:discord.Interaction,b): await i.response.send_message(embed=inventory_embed(i.user),ephemeral=True)
 
+# ─── Autocomplete Helpers ─────────────────────────────────────────────
+async def magic_item_autocomplete(interaction: discord.Interaction, current: str):
+    """Autocomplete สำหรับ Magic Items"""
+    results = []
+    for iid, item in MAGIC_ITEMS.items():
+        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
+            re = RARITY_EMOJI.get(item["rarity"], "")
+            results.append(app_commands.Choice(
+                name=f"{re} {item['name']} [{item['rarity']}]"[:100],
+                value=iid
+            ))
+    return results[:25]
+
+async def all_item_autocomplete(interaction: discord.Interaction, current: str):
+    """Autocomplete สำหรับทุกไอเทม (shop + magic)"""
+    results = []
+    # Magic items first
+    for iid, item in MAGIC_ITEMS.items():
+        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
+            re = RARITY_EMOJI.get(item["rarity"], "✨")
+            results.append(app_commands.Choice(
+                name=f"{re} {item['name']} [{item['rarity']}]"[:100],
+                value=iid
+            ))
+    # Shop items
+    for iid, item in load_shop()["items"].items():
+        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
+            results.append(app_commands.Choice(
+                name=f"🛒 {item['name']}"[:100],
+                value=iid
+            ))
+    return results[:25]
+
+async def inventory_autocomplete(interaction: discord.Interaction, current: str):
+    """Autocomplete จาก inventory ของผู้เล่น"""
+    player = get_player(interaction.user.id)
+    inv = player.get("inventory", {})
+    all_items = {**load_shop()["items"], **{k: {"name": v["name"]} for k, v in MAGIC_ITEMS.items()}}
+    results = []
+    for iid, qty in inv.items():
+        name = all_items.get(iid, {}).get("name", iid)
+        if current.lower() in iid.lower() or current.lower() in name.lower():
+            results.append(app_commands.Choice(
+                name=f"{name} ×{qty}"[:100],
+                value=iid
+            ))
+    return results[:25]
+
+
+@bot.tree.command(name="magic_ids", description="📖 ดู ID ของ Magic Items ทั้งหมด (DM)", guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(rarity="กรองตาม Rarity (ไม่ระบุ = แสดงทั้งหมด)")
+@app_commands.choices(rarity=[
+    app_commands.Choice(name="⚪ Common",     value="Common"),
+    app_commands.Choice(name="🟢 Uncommon",  value="Uncommon"),
+    app_commands.Choice(name="🔵 Rare",      value="Rare"),
+    app_commands.Choice(name="🟣 Very Rare", value="Very Rare"),
+    app_commands.Choice(name="🟡 Legendary", value="Legendary"),
+])
+@is_admin()
+async def magic_ids(i: discord.Interaction, rarity: str = None):
+    filtered = {k: v for k, v in MAGIC_ITEMS.items() if not rarity or v["rarity"] == rarity}
+    embed = discord.Embed(
+        title="📖 Magic Item IDs",
+        description="ใช้ ID เหล่านี้กับ `/admin_give_item` ครับหรือพิมพ์ชื่อใน `/admin_give_item` แล้วเลือกจาก autocomplete ได้เลย",
+        color=0x9B59B6
+    )
+    # Group by rarity
+    groups = {}
+    for iid, item in filtered.items():
+        r = item["rarity"]
+        if r not in groups: groups[r] = []
+        groups[r].append((iid, item["name"]))
+
+    order = ["Common", "Uncommon", "Rare", "Very Rare", "Legendary"]
+    for r in order:
+        if r not in groups: continue
+        lines = [f"`{iid}` — {name}" for iid, name in groups[r]]
+        embed.add_field(
+            name=f"{RARITY_EMOJI.get(r, '')} {r} ({len(lines)})",
+            value="\n".join(lines),
+            inline=False
+        )
+    embed.set_footer(text="💡 Tip: ใน /admin_give_item พิมพ์ชื่อไอเทมแล้วจะมี autocomplete ขึ้นให้เลือกได้เลย")
+    await i.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="admin_gold",description="[DM] ปรับทองผู้เล่น",guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(member="ผู้เล่น",action="add/remove/set",amount="จำนวน GP")
+@app_commands.choices(action=[app_commands.Choice(name="➕ เพิ่ม",value="add"),app_commands.Choice(name="➖ ลด",value="remove"),app_commands.Choice(name="🔧 กำหนด",value="set")])
+@is_admin()
+async def admin_gold(i:discord.Interaction,member:discord.Member,action:str,amount:float):
+    old_gold = get_player(member.id)["gold"]
+    old = old_gold
+    if action=="add":   verb=f"+{fmt_price(amount)}"; c=0x2ECC71
+    elif action=="remove": verb=f"-{fmt_price(amount)}"; c=0xE74C3C
+    else:               verb=f"= {fmt_price(amount)}"; c=0x3498DB
+    def do_gold(p):
+        nonlocal old
+        old = p["gold"]
+        if action=="add":    p["gold"] = max(0, p["gold"] + amount)
+        elif action=="remove": p["gold"] = max(0, p["gold"] - amount)
+        else:                p["gold"] = max(0, amount)
+    p = await update_player(member.id, do_gold)
+    embed=discord.Embed(title="💰 ปรับทองสำเร็จ",color=c)
+    embed.add_field(name="👤 ผู้เล่น",     value=member.mention,inline=True)
+    embed.add_field(name="🔧 การเปลี่ยน",  value=verb,          inline=True)
+    embed.add_field(name="💼 ก่อน→หลัง",   value=f"{fmt_price(old)} → {fmt_price(p['gold'])}",inline=True)
+    await i.response.send_message(embed=embed)
+
+@bot.tree.command(name="admin_give_item",description="[DM] มอบไอเทมให้ผู้เล่น",guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(member="ผู้เล่น",item_id="ID",quantity="จำนวน")
+@is_admin()
+@app_commands.autocomplete(item_id=all_item_autocomplete)
+async def admin_give_item(i:discord.Interaction,member:discord.Member,item_id:str,quantity:int=1):
+    item=load_shop()["items"].get(item_id) or MAGIC_ITEMS.get(item_id)
+    if not item: await i.response.send_message(f"❌ ไม่พบ `{item_id}`",ephemeral=True); return
+    await update_player(member.id, lambda p: p["inventory"].update({item_id: p["inventory"].get(item_id,0)+quantity}))
+    p = get_player(member.id)
+    embed=discord.Embed(title="🎁 มอบไอเทมสำเร็จ",color=0x9B59B6)
+    embed.add_field(name="👤 ผู้รับ",value=member.mention,inline=True)
+    embed.add_field(name="📦 ไอเทม",value=f"**{item['name']}** ×{quantity}",inline=True)
+    await i.response.send_message(embed=embed)
+
+@bot.tree.command(name="admin_take_item",description="[DM] เอาไอเทมจากผู้เล่น",guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(member="ผู้เล่น",item_id="ID",quantity="จำนวน")
+@is_admin()
+@app_commands.autocomplete(item_id=all_item_autocomplete)
+async def admin_take_item(i:discord.Interaction,member:discord.Member,item_id:str,quantity:int=1):
+    check = get_player(member.id)
+    if check["inventory"].get(item_id,0) < quantity:
+        await i.response.send_message(f"❌ {member.display_name} มี `{item_id}` แค่ {check['inventory'].get(item_id,0)} ชิ้น",ephemeral=True); return
+    def do_take(p):
+        p["inventory"][item_id] = p["inventory"].get(item_id,0) - quantity
+        if p["inventory"][item_id] <= 0: del p["inventory"][item_id]
+    await update_player(member.id, do_take)
+    await i.response.send_message(f"🗑️ เอา `{item_id}` ×{quantity} จาก {member.mention} ออกแล้ว")
+
+@bot.tree.command(name="admin_add_item",description="[DM] เพิ่มสินค้าใหม่",guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(item_id="ID",name="ชื่อ",desc="คำอธิบาย",price="ราคา GP",category="หมวด",stock="stock (-1=∞)")
+@app_commands.choices(category=[
+    app_commands.Choice(name="⚔️ Simple Melee",   value="simple_melee"),
+    app_commands.Choice(name="🏹 Simple Ranged",  value="simple_ranged"),
+    app_commands.Choice(name="🗡️ Martial Melee",  value="martial_melee"),
+    app_commands.Choice(name="🎯 Martial Ranged", value="martial_ranged"),
+    app_commands.Choice(name="🧪 Potion",         value="potion"),
+    app_commands.Choice(name="⚗️ Alchemical Gear",value="alch_gear"),
+    app_commands.Choice(name="🎒 Adventuring Gear",value="gear"),
+    app_commands.Choice(name="🍳 Food & Cooking", value="food"),
+    app_commands.Choice(name="🔧 Tools & Kits",   value="tools"),
+    app_commands.Choice(name="👕 Clothing",        value="clothing"),
+])
+@is_admin()
+async def admin_add_item(i:discord.Interaction,item_id:str,name:str,desc:str,price:float,category:str,stock:int=-1):
+    if " " in item_id: await i.response.send_message("❌ item_id ห้ามมีช่องว่าง",ephemeral=True); return
+    sd=load_shop()
+    if item_id in sd["items"]: await i.response.send_message(f"❌ มี `{item_id}` อยู่แล้ว",ephemeral=True); return
+    sd["items"][item_id]={"name":name,"desc":desc,"price":price,"category":category,"stock":stock}; save_shop(sd)
+    await i.response.send_message(f"✅ เพิ่ม **{name}** (`{item_id}`) ราคา {fmt_price(price)} แล้ว!")
+
+@bot.tree.command(name="admin_stock",description="[DM] ปรับ stock",guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(item_id="ID",amount="จำนวน (-1=∞)")
+@is_admin()
+async def admin_stock(i:discord.Interaction,item_id:str,amount:int):
+    sd=load_shop()
+    if item_id not in sd["items"]: await i.response.send_message(f"❌ ไม่พบ `{item_id}`",ephemeral=True); return
+    sd["items"][item_id]["stock"]=amount; save_shop(sd)
+    await i.response.send_message(f"✅ ปรับ stock `{item_id}` เป็น **{'∞' if amount==-1 else amount}**")
+
+@bot.tree.command(name="admin_remove_item",description="[DM] ลบสินค้า",guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(item_id="ID")
+@is_admin()
+async def admin_remove_item(i:discord.Interaction,item_id:str):
+    sd=load_shop()
+    if item_id not in sd["items"]: await i.response.send_message(f"❌ ไม่พบ `{item_id}`",ephemeral=True); return
+    name=sd["items"][item_id]["name"]; del sd["items"][item_id]; save_shop(sd)
+    await i.response.send_message(f"🗑️ ลบ **{name}** ออกจากร้านแล้ว")
+
+# ─── Run ──────────────────────────────────────────────────────────────
+TOKEN=os.getenv("DISCORD_TOKEN")
+if not TOKEN: print("❌ ไม่พบ DISCORD_TOKEN!")
+else: bot.run(TOKEN)
 @bot.tree.command(name="market",description="🏪 เปิดตลาด — เลือกร้านที่ต้องการ",guild=discord.Object(id=GUILD_ID))
 async def market(i:discord.Interaction):
     embed=discord.Embed(title="🏪 The Grand Market",color=0xF1C40F,
@@ -683,184 +863,3 @@ async def roll_reward(i:discord.Interaction,rank:str,quest_name:str=None,count:i
     await i.response.send_message(embed=make_roll_embed(rank,item_ids,quest_name),view=RollView(item_ids))
 
 # ─── Admin Commands ───────────────────────────────────────────────────
-
-# ─── Autocomplete Helpers ─────────────────────────────────────────────
-async def magic_item_autocomplete(interaction: discord.Interaction, current: str):
-    """Autocomplete สำหรับ Magic Items"""
-    results = []
-    for iid, item in MAGIC_ITEMS.items():
-        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
-            re = RARITY_EMOJI.get(item["rarity"], "")
-            results.append(app_commands.Choice(
-                name=f"{re} {item['name']} [{item['rarity']}]"[:100],
-                value=iid
-            ))
-    return results[:25]
-
-async def all_item_autocomplete(interaction: discord.Interaction, current: str):
-    """Autocomplete สำหรับทุกไอเทม (shop + magic)"""
-    results = []
-    # Magic items first
-    for iid, item in MAGIC_ITEMS.items():
-        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
-            re = RARITY_EMOJI.get(item["rarity"], "✨")
-            results.append(app_commands.Choice(
-                name=f"{re} {item['name']} [{item['rarity']}]"[:100],
-                value=iid
-            ))
-    # Shop items
-    for iid, item in load_shop()["items"].items():
-        if current.lower() in iid.lower() or current.lower() in item["name"].lower():
-            results.append(app_commands.Choice(
-                name=f"🛒 {item['name']}"[:100],
-                value=iid
-            ))
-    return results[:25]
-
-async def inventory_autocomplete(interaction: discord.Interaction, current: str):
-    """Autocomplete จาก inventory ของผู้เล่น"""
-    player = get_player(interaction.user.id)
-    inv = player.get("inventory", {})
-    all_items = {**load_shop()["items"], **{k: {"name": v["name"]} for k, v in MAGIC_ITEMS.items()}}
-    results = []
-    for iid, qty in inv.items():
-        name = all_items.get(iid, {}).get("name", iid)
-        if current.lower() in iid.lower() or current.lower() in name.lower():
-            results.append(app_commands.Choice(
-                name=f"{name} ×{qty}"[:100],
-                value=iid
-            ))
-    return results[:25]
-
-
-@bot.tree.command(name="magic_ids", description="📖 ดู ID ของ Magic Items ทั้งหมด (DM)", guild=discord.Object(id=GUILD_ID))
-@app_commands.describe(rarity="กรองตาม Rarity (ไม่ระบุ = แสดงทั้งหมด)")
-@app_commands.choices(rarity=[
-    app_commands.Choice(name="⚪ Common",     value="Common"),
-    app_commands.Choice(name="🟢 Uncommon",  value="Uncommon"),
-    app_commands.Choice(name="🔵 Rare",      value="Rare"),
-    app_commands.Choice(name="🟣 Very Rare", value="Very Rare"),
-    app_commands.Choice(name="🟡 Legendary", value="Legendary"),
-])
-@is_admin()
-async def magic_ids(i: discord.Interaction, rarity: str = None):
-    filtered = {k: v for k, v in MAGIC_ITEMS.items() if not rarity or v["rarity"] == rarity}
-    embed = discord.Embed(
-        title="📖 Magic Item IDs",
-        description="ใช้ ID เหล่านี้กับ `/admin_give_item` ครับหรือพิมพ์ชื่อใน `/admin_give_item` แล้วเลือกจาก autocomplete ได้เลย",
-        color=0x9B59B6
-    )
-    # Group by rarity
-    groups = {}
-    for iid, item in filtered.items():
-        r = item["rarity"]
-        if r not in groups: groups[r] = []
-        groups[r].append((iid, item["name"]))
-
-    order = ["Common", "Uncommon", "Rare", "Very Rare", "Legendary"]
-    for r in order:
-        if r not in groups: continue
-        lines = [f"`{iid}` — {name}" for iid, name in groups[r]]
-        embed.add_field(
-            name=f"{RARITY_EMOJI.get(r, '')} {r} ({len(lines)})",
-            value="\n".join(lines),
-            inline=False
-        )
-    embed.set_footer(text="💡 Tip: ใน /admin_give_item พิมพ์ชื่อไอเทมแล้วจะมี autocomplete ขึ้นให้เลือกได้เลย")
-    await i.response.send_message(embed=embed, ephemeral=True)
-
-@bot.tree.command(name="admin_gold",description="[DM] ปรับทองผู้เล่น",guild=discord.Object(id=GUILD_ID))
-@app_commands.describe(member="ผู้เล่น",action="add/remove/set",amount="จำนวน GP")
-@app_commands.choices(action=[app_commands.Choice(name="➕ เพิ่ม",value="add"),app_commands.Choice(name="➖ ลด",value="remove"),app_commands.Choice(name="🔧 กำหนด",value="set")])
-@is_admin()
-async def admin_gold(i:discord.Interaction,member:discord.Member,action:str,amount:float):
-    old_gold = get_player(member.id)["gold"]
-    old = old_gold
-    if action=="add":   verb=f"+{fmt_price(amount)}"; c=0x2ECC71
-    elif action=="remove": verb=f"-{fmt_price(amount)}"; c=0xE74C3C
-    else:               verb=f"= {fmt_price(amount)}"; c=0x3498DB
-    def do_gold(p):
-        nonlocal old
-        old = p["gold"]
-        if action=="add":    p["gold"] = max(0, p["gold"] + amount)
-        elif action=="remove": p["gold"] = max(0, p["gold"] - amount)
-        else:                p["gold"] = max(0, amount)
-    p = await update_player(member.id, do_gold)
-    embed=discord.Embed(title="💰 ปรับทองสำเร็จ",color=c)
-    embed.add_field(name="👤 ผู้เล่น",     value=member.mention,inline=True)
-    embed.add_field(name="🔧 การเปลี่ยน",  value=verb,          inline=True)
-    embed.add_field(name="💼 ก่อน→หลัง",   value=f"{fmt_price(old)} → {fmt_price(p['gold'])}",inline=True)
-    await i.response.send_message(embed=embed)
-
-@bot.tree.command(name="admin_give_item",description="[DM] มอบไอเทมให้ผู้เล่น",guild=discord.Object(id=GUILD_ID))
-@app_commands.describe(member="ผู้เล่น",item_id="ID",quantity="จำนวน")
-@is_admin()
-@app_commands.autocomplete(item_id=all_item_autocomplete)
-async def admin_give_item(i:discord.Interaction,member:discord.Member,item_id:str,quantity:int=1):
-    item=load_shop()["items"].get(item_id) or MAGIC_ITEMS.get(item_id)
-    if not item: await i.response.send_message(f"❌ ไม่พบ `{item_id}`",ephemeral=True); return
-    await update_player(member.id, lambda p: p["inventory"].update({item_id: p["inventory"].get(item_id,0)+quantity}))
-    p = get_player(member.id)
-    embed=discord.Embed(title="🎁 มอบไอเทมสำเร็จ",color=0x9B59B6)
-    embed.add_field(name="👤 ผู้รับ",value=member.mention,inline=True)
-    embed.add_field(name="📦 ไอเทม",value=f"**{item['name']}** ×{quantity}",inline=True)
-    await i.response.send_message(embed=embed)
-
-@bot.tree.command(name="admin_take_item",description="[DM] เอาไอเทมจากผู้เล่น",guild=discord.Object(id=GUILD_ID))
-@app_commands.describe(member="ผู้เล่น",item_id="ID",quantity="จำนวน")
-@is_admin()
-@app_commands.autocomplete(item_id=all_item_autocomplete)
-async def admin_take_item(i:discord.Interaction,member:discord.Member,item_id:str,quantity:int=1):
-    check = get_player(member.id)
-    if check["inventory"].get(item_id,0) < quantity:
-        await i.response.send_message(f"❌ {member.display_name} มี `{item_id}` แค่ {check['inventory'].get(item_id,0)} ชิ้น",ephemeral=True); return
-    def do_take(p):
-        p["inventory"][item_id] = p["inventory"].get(item_id,0) - quantity
-        if p["inventory"][item_id] <= 0: del p["inventory"][item_id]
-    await update_player(member.id, do_take)
-    await i.response.send_message(f"🗑️ เอา `{item_id}` ×{quantity} จาก {member.mention} ออกแล้ว")
-
-@bot.tree.command(name="admin_add_item",description="[DM] เพิ่มสินค้าใหม่",guild=discord.Object(id=GUILD_ID))
-@app_commands.describe(item_id="ID",name="ชื่อ",desc="คำอธิบาย",price="ราคา GP",category="หมวด",stock="stock (-1=∞)")
-@app_commands.choices(category=[
-    app_commands.Choice(name="⚔️ Simple Melee",   value="simple_melee"),
-    app_commands.Choice(name="🏹 Simple Ranged",  value="simple_ranged"),
-    app_commands.Choice(name="🗡️ Martial Melee",  value="martial_melee"),
-    app_commands.Choice(name="🎯 Martial Ranged", value="martial_ranged"),
-    app_commands.Choice(name="🧪 Potion",         value="potion"),
-    app_commands.Choice(name="⚗️ Alchemical Gear",value="alch_gear"),
-    app_commands.Choice(name="🎒 Adventuring Gear",value="gear"),
-    app_commands.Choice(name="🍳 Food & Cooking", value="food"),
-    app_commands.Choice(name="🔧 Tools & Kits",   value="tools"),
-    app_commands.Choice(name="👕 Clothing",        value="clothing"),
-])
-@is_admin()
-async def admin_add_item(i:discord.Interaction,item_id:str,name:str,desc:str,price:float,category:str,stock:int=-1):
-    if " " in item_id: await i.response.send_message("❌ item_id ห้ามมีช่องว่าง",ephemeral=True); return
-    sd=load_shop()
-    if item_id in sd["items"]: await i.response.send_message(f"❌ มี `{item_id}` อยู่แล้ว",ephemeral=True); return
-    sd["items"][item_id]={"name":name,"desc":desc,"price":price,"category":category,"stock":stock}; save_shop(sd)
-    await i.response.send_message(f"✅ เพิ่ม **{name}** (`{item_id}`) ราคา {fmt_price(price)} แล้ว!")
-
-@bot.tree.command(name="admin_stock",description="[DM] ปรับ stock",guild=discord.Object(id=GUILD_ID))
-@app_commands.describe(item_id="ID",amount="จำนวน (-1=∞)")
-@is_admin()
-async def admin_stock(i:discord.Interaction,item_id:str,amount:int):
-    sd=load_shop()
-    if item_id not in sd["items"]: await i.response.send_message(f"❌ ไม่พบ `{item_id}`",ephemeral=True); return
-    sd["items"][item_id]["stock"]=amount; save_shop(sd)
-    await i.response.send_message(f"✅ ปรับ stock `{item_id}` เป็น **{'∞' if amount==-1 else amount}**")
-
-@bot.tree.command(name="admin_remove_item",description="[DM] ลบสินค้า",guild=discord.Object(id=GUILD_ID))
-@app_commands.describe(item_id="ID")
-@is_admin()
-async def admin_remove_item(i:discord.Interaction,item_id:str):
-    sd=load_shop()
-    if item_id not in sd["items"]: await i.response.send_message(f"❌ ไม่พบ `{item_id}`",ephemeral=True); return
-    name=sd["items"][item_id]["name"]; del sd["items"][item_id]; save_shop(sd)
-    await i.response.send_message(f"🗑️ ลบ **{name}** ออกจากร้านแล้ว")
-
-# ─── Run ──────────────────────────────────────────────────────────────
-TOKEN=os.getenv("DISCORD_TOKEN")
-if not TOKEN: print("❌ ไม่พบ DISCORD_TOKEN!")
-else: bot.run(TOKEN)
