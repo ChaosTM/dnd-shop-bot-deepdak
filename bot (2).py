@@ -293,7 +293,7 @@ def get_player(uid):
     """Read-only snapshot ใช้สำหรับแสดงผลเท่านั้น"""
     players=load_players(); key=str(uid)
     if key not in players:
-        return {"gold":100,"inventory":{}}
+        return {"gold":100,"inventory":{},"quests":0,"level":3}
     return players[key]
 
 _player_lock = asyncio.Lock()
@@ -305,7 +305,7 @@ async def update_player(uid: int, fn):
         players = load_players()
         key = str(uid)
         if key not in players:
-            players[key] = {"gold": 100, "inventory": {}}
+            players[key] = {"gold": 100, "inventory": {}, "quests": 0, "level": 3}
         player = players[key]
         fn(player)
         players[key] = player
@@ -325,6 +325,60 @@ def fmt_price(p):
     if p<1:    return f"{round(p*10)} SP"
     if p<1000: return f"{p:g} GP"
     return f"{int(p):,} GP"
+
+
+# ─── Level Helpers ────────────────────────────────────────────────────
+QUESTS_PER_LEVEL = 4
+START_LEVEL      = 3
+
+def calc_level(quests: int) -> int:
+    return START_LEVEL + (quests // QUESTS_PER_LEVEL)
+
+def quests_to_next(quests: int) -> int:
+    return QUESTS_PER_LEVEL - (quests % QUESTS_PER_LEVEL)
+
+def level_progress_bar(quests: int) -> str:
+    done  = quests % QUESTS_PER_LEVEL
+    total = QUESTS_PER_LEVEL
+    filled = "█" * done
+    empty  = "░" * (total - done)
+    return f"{filled}{empty} {done}/{total}"
+
+LEVEL_EMOJI = {
+    range(3,  5):  "🌱",
+    range(5,  8):  "⚔️",
+    range(8, 11):  "🔥",
+    range(11, 15): "💎",
+    range(15, 20): "👑",
+}
+
+def get_level_emoji(level: int) -> str:
+    for r, emoji in LEVEL_EMOJI.items():
+        if level in r: return emoji
+    return "🌟"
+
+# ─── Level System ────────────────────────────────────────────────────
+START_LEVEL    = 3      # เริ่มต้นที่ level 3
+QUESTS_PER_LVL = 4      # ทุก 4 เควส = level up
+
+def calc_level(quests: int) -> int:
+    """คำนวณ level จากจำนวนเควสที่ทำ"""
+    return START_LEVEL + (quests // QUESTS_PER_LVL)
+
+def quests_in_current_lvl(quests: int) -> int:
+    """เควสที่ทำใน level ปัจจุบัน (0–3)"""
+    return quests % QUESTS_PER_LVL
+
+def quests_to_next_lvl(quests: int) -> int:
+    """เควสที่ต้องทำอีกเพื่อ level up"""
+    return QUESTS_PER_LVL - quests_in_current_lvl(quests)
+
+def level_progress_bar(quests: int) -> str:
+    """Progress bar ██░░░░"""
+    done = quests_in_current_lvl(quests)
+    bar = "█" * done + "░" * (QUESTS_PER_LVL - done)
+    return f"`[{bar}]` {done}/{QUESTS_PER_LVL}"
+
 
 # ─── Random Roll ──────────────────────────────────────────────────────
 def weighted_rarity(rank):
@@ -704,8 +758,13 @@ async def gold_cmd(i: discord.Interaction):
         title=f"🪙 Coinpurse ของ {i.user.display_name}",
         color=0xF1C40F
     )
-    embed.add_field(name="💰 ทองคงเหลือ", value=f"**{fmt_price(player['gold'])}**", inline=True)
-    embed.add_field(name="🎒 ไอเทมทั้งหมด", value=f"**{sum(inv.values())} ชิ้น**", inline=True)
+    quests  = player.get("quests", 0)
+    plevel  = calc_level(quests)
+    to_next = quests_to_next(quests)
+    embed.add_field(name="💰 ทองคงเหลือ",  value=f"**{fmt_price(player['gold'])}**", inline=True)
+    embed.add_field(name="⚔️ เลเวล",       value=f"**Level {plevel}**",              inline=True)
+    embed.add_field(name="🎒 ไอเทมทั้งหมด", value=f"**{sum(inv.values())} ชิ้น**",   inline=True)
+    embed.add_field(name=f"📈 สู่ Level {plevel+1}", value=f"`{level_progress_bar(quests)}` อีก {to_next} เควส", inline=False)
     if inv:
         lines = [f"{all_items.get(iid,{}).get('name',iid)} ×{qty}" for iid,qty in list(inv.items())[:10]]
         if len(inv) > 10: lines.append(f"*...และอีก {len(inv)-10} ชนิด*")
@@ -861,6 +920,85 @@ async def roll_reward(i:discord.Interaction,rank:str,quest_name:str=None,count:i
 
 # ─── Admin Commands ───────────────────────────────────────────────────
 
+# ─── Level Commands ───────────────────────────────────────────────────
+@bot.tree.command(name="level", description="⚔️ ดูเลเวลและความก้าวหน้าของตัวเอง", guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(member="ดูเลเวลของคนอื่น (ไม่ระบุ = ตัวเอง)")
+async def level_cmd(i: discord.Interaction, member: Optional[discord.Member] = None):
+    target = member or i.user
+    player = get_player(target.id)
+    quests = player.get("quests", 0)
+    level  = calc_level(quests)
+    to_next = quests_to_next(quests)
+    bar     = level_progress_bar(quests)
+    emoji   = get_level_emoji(level)
+
+    embed = discord.Embed(
+        title=f"{emoji} {target.display_name} — Level {level}",
+        color=0x9B59B6
+    )
+    embed.set_thumbnail(url=target.display_avatar.url)
+    embed.add_field(name="⚔️ เลเวลปัจจุบัน", value=f"**Level {level}**",    inline=True)
+    embed.add_field(name="📜 เควสทั้งหมด",    value=f"**{quests} เควส**",     inline=True)
+    embed.add_field(name="💰 ทองคงเหลือ",     value=f"**{fmt_price(player['gold'])}**", inline=True)
+    embed.add_field(
+        name=f"📈 ความก้าวหน้าสู่ Level {level + 1}",
+        value=f"`{bar}`ต้องการอีก **{to_next} เควส**",
+        inline=False
+    )
+    embed.set_footer(text=f"ทุก {QUESTS_PER_LEVEL} เควส = +1 Level | เริ่มต้น Level {START_LEVEL}")
+    await i.response.send_message(embed=embed)
+
+@bot.tree.command(name="admin_quest", description="[DM] เพิ่มเควสให้ผู้เล่น (เลเวลอัพอัตโนมัติ)", guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(
+    member="ผู้เล่นที่ต้องการเพิ่มเควส",
+    amount="จำนวนเควส (default 1)",
+    quest_name="ชื่อเควส (ไม่บังคับ)"
+)
+@is_admin()
+async def admin_quest(i: discord.Interaction, member: discord.Member, amount: int = 1, quest_name: str = None):
+    if amount <= 0:
+        await i.response.send_message("❌ จำนวนเควสต้องมากกว่า 0", ephemeral=True); return
+
+    old_data   = get_player(member.id)
+    old_quests = old_data.get("quests", 0)
+    old_level  = calc_level(old_quests)
+
+    def do_quest(p):
+        p.setdefault("quests", 0)
+        p.setdefault("level",  START_LEVEL)
+        p["quests"] += amount
+        p["level"]   = calc_level(p["quests"])
+
+    player     = await update_player(member.id, do_quest)
+    new_quests = player["quests"]
+    new_level  = player["level"]
+    leveled_up = new_level > old_level
+
+    # ── Embed สรุปผล ──────────────────────────────────────────────────
+    color = 0xFFD700 if leveled_up else 0x2ECC71
+    title = f"🎉 {member.display_name} Level Up! {old_level} → {new_level}" if leveled_up else f"📜 เพิ่มเควสสำเร็จ"
+    embed = discord.Embed(title=title, color=color)
+
+    if quest_name:
+        embed.add_field(name="📋 เควส", value=f'*"{quest_name}"*', inline=False)
+
+    embed.add_field(name="📜 เควสที่ได้รับ",  value=f"+{amount} เควส",                  inline=True)
+    embed.add_field(name="📊 เควสรวม",        value=f"**{new_quests} เควส**",            inline=True)
+    embed.add_field(name="⚔️ เลเวล",          value=f"**Level {new_level}**",            inline=True)
+
+    bar = level_progress_bar(new_quests)
+    to_next = quests_to_next(new_quests)
+    embed.add_field(
+        name=f"📈 สู่ Level {new_level + 1}",
+        value=f"`{bar}` ต้องการอีก **{to_next} เควส**",
+        inline=False
+    )
+
+    if leveled_up:
+        embed.set_footer(text=f"🎊 ยินดีด้วย {member.display_name}! ขึ้น Level {new_level} แล้ว!")
+        embed.set_thumbnail(url=member.display_avatar.url)
+
+    await i.response.send_message(embed=embed)
 # ─── Run ──────────────────────────────────────────────────────────────
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
