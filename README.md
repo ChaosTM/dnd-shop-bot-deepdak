@@ -8,9 +8,9 @@
 
 | ร้าน | NPC | สินค้า |
 |------|-----|--------|
-| ⚒️ **Blacksmith ** | แนะนำให้เข้าไปตั้งเอง | Simple/Martial Weapons + Ammo |
-| 🧪 **The Mystic Vial** | แนะนำให้เข้าไปตั้งเอง | Potions + Alchemical Gear + Focuses + Scrolls |
-| 🎒 **The Wanderer's Pack** | แนะนำให้เข้าไปตั้งเอง | Gear + Food + Tools + Clothing |
+| ⚒️ **Blacksmith** | แนะนำให้เข้าไปตั้งเอง | Simple/Martial Weapons + Ammo |
+| 🧪 **Alchemists** | แนะนำให้เข้าไปตั้งเอง | Potions + Alchemical Gear + Focuses + Scrolls |
+| 🎒 **General store** | แนะนำให้เข้าไปตั้งเอง | Gear + Food + Tools + Clothing |
 
 **สินค้ารวม 131 รายการ** อิงราคาจาก 2024 PHB Official ทุกชิ้น
 
