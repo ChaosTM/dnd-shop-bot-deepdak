@@ -1,7 +1,6 @@
-# ⚔️ DnD 5e Shop Bot — Merchant Boy
+# ⚔️ Merchant Boy — DnD 5e Shop Bot
 
-> Discord Bot สำหรับจัดการตลาดค้าขายใน Campaign DnD 5e (2024 PHB)  
-> มีร้านค้า 3 ร้าน • สินค้า 131 รายการ • ระบบสุ่ม Magic Items ตาม Quest Rank
+> Discord Bot สำหรับจัดการตลาดค้าขายและระบบเลเวลใน Campaign DnD 5e (2024 PHB)
 
 ---
 
@@ -9,9 +8,11 @@
 
 | ร้าน | NPC | สินค้า |
 |------|-----|--------|
-| ⚒️ **The Iron Bastion** | Duren Ironforge | Simple/Martial Weapons + Ammo (40 รายการ) |
-| 🧪 **The Mystic Vial** | Seraphine Duskwhisper | Potions + Alchemical Gear + Focuses + Scrolls (23 รายการ) |
-| 🎒 **The Wanderer's Pack** | Mira Copperkettle | Gear + Food + Tools + Clothing (68 รายการ) |
+| ⚒️ **Blacksmith ** | แนะนำให้เข้าไปตั้งเอง | Simple/Martial Weapons + Ammo |
+| 🧪 **The Mystic Vial** | แนะนำให้เข้าไปตั้งเอง | Potions + Alchemical Gear + Focuses + Scrolls |
+| 🎒 **The Wanderer's Pack** | แนะนำให้เข้าไปตั้งเอง | Gear + Food + Tools + Clothing |
+
+**สินค้ารวม 131 รายการ** อิงราคาจาก 2024 PHB Official ทุกชิ้น
 
 ---
 
@@ -21,21 +22,23 @@
 
 | คำสั่ง | คำอธิบาย |
 |--------|---------|
-| `/market` | เปิดตลาด เลือกร้านจาก dropdown |
-| `/buy <id> [จำนวน]` | ซื้อสินค้า (ดู ID จากร้าน) |
+| `/market` | เปิดตลาด — เลือกร้านจาก dropdown |
+| `/buy <id> [จำนวน]` | ซื้อสินค้า |
 | `/sell <id> [จำนวน]` | ขายสินค้า (ได้คืน 50%) |
+| `/gold` | ดูทอง + เลเวล + inventory |
+| `/level [@member]` | ดูเลเวลและความคืบหน้าของตัวเองหรือคนอื่น |
 
-> 💡 ใช้ปุ่ม **Check Coinpurse** และ **List of Items** ใน embed ได้เลยโดยไม่ต้องพิมพ์คำสั่ง
+> 💡 กดปุ่ม **Check Coinpurse** และ **List of Items** ใน embed ได้เลย
 
 ---
 
-### 🎲 ระบบ Quest Reward (DM เท่านั้น)
+### 🎲 Quest Reward (DM เท่านั้น)
 
 | คำสั่ง | คำอธิบาย |
 |--------|---------|
 | `/roll_reward <rank> [quest_name] [count]` | สุ่ม Magic Items ตาม Quest Rank |
 
-**Quest Rank และโอกาสได้รับ:**
+**ตาราง Quest Rank:**
 
 | Rank | Common | Uncommon | Rare | Very Rare | Legendary |
 |------|--------|----------|------|-----------|-----------|
@@ -47,7 +50,19 @@
 | 🟠 A | — | 10% | 35% | 45% | 10% |
 | 🟡 S | — | 5% | 20% | 45% | 30% |
 
-> ผู้เล่นเลือกซื้อจาก dropdown ที่ปรากฏหลังสุ่มได้ทันที
+---
+
+### ⭐ ระบบเลเวล (DM เท่านั้น)
+
+| คำสั่ง | คำอธิบาย |
+|--------|---------|
+| `/admin_quest <@A @B @C> [amount] [quest_name]` | เพิ่มเควสให้ผู้เล่นหลายคนพร้อมกัน |
+
+**กติกา:**
+- เริ่มต้นที่ **Level 3**
+- ทุก **4 เควส** = Level Up 1 ระดับ
+- ไม่มี Level สูงสุด — DM กำหนดตามเนื้อเรื่อง
+- ถ้า Level Up จะ announce ให้ทุกคนในแชทเห็น 🎉
 
 ---
 
@@ -55,13 +70,17 @@
 
 | คำสั่ง | คำอธิบาย |
 |--------|---------|
-| `/setup_market <forum_channel>` | ติดตั้งร้านค้าลง Forum Channel (ทำครั้งเดียว) |
+| `/setup_shop <shop> <thread>` | ผูกร้านค้าเข้ากับ Forum Thread (ทำทีละร้าน) |
+| `/setup_refresh` | รีเฟรช embed ทุกร้านพร้อมกัน |
 | `/admin_gold <member> <add/remove/set> <amount>` | ปรับทองผู้เล่น |
 | `/admin_give_item <member> <id> [จำนวน]` | มอบไอเทมให้ผู้เล่น |
 | `/admin_take_item <member> <id> [จำนวน]` | เอาไอเทมจากผู้เล่น |
 | `/admin_add_item <id> <name> <desc> <price> <category> [stock]` | เพิ่มสินค้าใหม่ |
 | `/admin_stock <id> <amount>` | ปรับ stock (-1 = ไม่จำกัด) |
 | `/admin_remove_item <id>` | ลบสินค้าออกจากร้าน |
+| `/magic_ids [rarity]` | ดู ID ของ Magic Items ทั้งหมด |
+
+> 💡 `/admin_give_item` และ `/sell` รองรับ **autocomplete** — พิมพ์ชื่อไอเทมแล้วเลือกจากรายการได้เลย
 
 ---
 
@@ -71,14 +90,13 @@
 
 1. ไปที่ [discord.com/developers/applications](https://discord.com/developers/applications)
 2. **New Application** → ตั้งชื่อ → **Create**
-3. ไปที่ **Bot** tab
-4. เปิด **Privileged Gateway Intents** ทั้ง 3 ตัว ✅
-5. คัดลอก **Token**
-6. **OAuth2 → URL Generator** → Scopes: `bot` + `applications.commands`
+3. ไปที่ **Bot** tab → เปิด **Privileged Gateway Intents** ทั้ง 3 ตัว ✅
+4. คัดลอก **Token**
+5. **OAuth2 → URL Generator** → Scopes: `bot` + `applications.commands`
    Permissions: `Send Messages`, `Embed Links`, `Use Slash Commands`, `Create Public Threads`
-7. คัดลอก URL → เชิญ bot เข้า server
+6. เชิญ bot เข้า server
 
-### 2. ติดตั้ง Python Dependencies
+### 2. ติดตั้ง
 
 ```bash
 pip install -r requirements.txt
@@ -88,42 +106,45 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# แก้ไข .env แล้วใส่ token
+# แก้ไข .env ใส่ token
 DISCORD_TOKEN=your_token_here
 ```
 
-### 4. รัน Bot
+### 4. รัน
 
 ```bash
 python bot.py
 ```
 
-หรือ deploy บน **Railway.app** โดยใส่ `DISCORD_TOKEN` ใน Variables
+หรือ deploy บน **Railway.app** โดยใส่ `DISCORD_TOKEN` ใน Variables และสร้าง `Procfile`:
+```
+worker: python bot.py
+```
 
 ---
 
-## 📌 วิธีตั้ง Forum Shop (แนะนำ)
-
-แทนที่จะให้ผู้เล่นพิมพ์ `/market` ทุกครั้ง ตั้งให้ร้านค้าแสดงอยู่ใน **Forum Channel** ได้ถาวร
+## 📌 วิธีตั้ง Forum Shop
 
 1. สร้าง **Forum Channel** ใน server (เช่น `#marketplace`)
-2. DM พิมพ์: `/setup_market #marketplace`
-3. Bot สร้าง thread ให้แต่ละร้านอัตโนมัติ ผู้เล่นกดเข้าไปดูและซื้อได้เลย
+2. สร้าง thread แยกสำหรับแต่ละร้าน (3 threads)
+3. DM พิมพ์ `/setup_shop` → เลือกร้าน → เลือก thread ที่ต้องการ
+4. ทำซ้ำกับทุกร้าน
+5. ผู้เล่นเข้าไปกด dropdown ซื้อของได้เลยโดยไม่ต้องพิมพ์คำสั่ง
 
-> ✅ หลัง bot restart ร้านค้ายังใช้งานได้เหมือนเดิม เพราะ views ถูก re-register อัตโนมัติ
+> ✅ หลัง bot restart ปุ่มและ dropdown ยังทำงานได้ เพราะ views ถูก re-register อัตโนมัติ
 
 ---
 
 ## 📁 โครงสร้างไฟล์
 
 ```
-├── bot.py              # ไฟล์หลัก
+├── bot.py              # ไฟล์เดียว — ทุกอย่างอยู่ที่นี่
 ├── requirements.txt
-├── Procfile            # Railway: worker: python bot.py
+├── Procfile
 ├── .env.example
-└── data/               # สร้างอัตโนมัติ
+└── data/               # สร้างอัตโนมัติเมื่อรัน
     ├── shop.json       # สินค้าและ stock
-    ├── players.json    # ทองและ inventory ของผู้เล่น
+    ├── players.json    # ทอง, inventory, เลเวล, เควส
     └── setup.json      # ตำแหน่ง Forum threads
 ```
 
@@ -131,7 +152,7 @@ python bot.py
 
 ## 💰 ระบบเศรษฐกิจ
 
-เซ็ตมาให้เหมาะกับ Campaign ที่ได้รับ **100–150 GP ต่อเควสต่อหัว**
+ออกแบบสำหรับ Campaign ที่ได้รับ **100–150 GP ต่อเควสต่อหัว**
 
 | Rarity | ราคา | เก็บกี่เควส |
 |--------|------|------------|
@@ -145,17 +166,22 @@ python bot.py
 
 ## ⚙️ สิทธิ์ Admin
 
-ต้องการอย่างใดอย่างหนึ่ง: สิทธิ์ `Administrator` บน server หรือ Role ชื่อ `DM`, `Admin`, หรือ `Game Master`
+ต้องการอย่างใดอย่างหนึ่ง:
+- สิทธิ์ `Administrator` บน server
+- Role ชื่อ `DM`, `Admin`, หรือ `Game Master`
 
 ---
 
 ## 🔧 การปรับแต่ง
 
+แก้ค่าตัวแปรด้านบนของไฟล์ `bot.py`:
+
 ```python
-# บน bot.py บรรทัดแรกๆ
-GUILD_ID = 1460585900504387657   # เปลี่ยนเป็น Server ID ของคุณ
+GUILD_ID       = 1460585900504387657  # Server ID ของคุณ
+START_LEVEL    = 3                    # เริ่มต้นที่ Level เท่าไหร่
+QUESTS_PER_LVL = 4                   # กี่เควสถึง Level Up
 ```
 
-เปลี่ยนชื่อร้าน/NPC ได้ในส่วน `SHOPS = { ... }`
+---
 
-*สร้างสำหรับ campaign DnD 5e 2024 PHB*
+*Merchant Boy — Built for ChaosTM's DnD 5e Campaign | 2024 PHB*
